@@ -42,6 +42,7 @@ func registerImportRoutes(mux *http.ServeMux, db *pgxpool.Pool, dir string, stor
 		store = stores[0]
 	}
 	registerYouTubeRoutes(mux, db)
+	registerPDFRoutes(mux, db, dir, store)
 	mux.HandleFunc("POST /api/recordings", func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 200<<20)
 		if err := r.ParseMultipartForm(8 << 20); err != nil {

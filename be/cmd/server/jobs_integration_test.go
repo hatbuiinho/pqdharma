@@ -52,6 +52,7 @@ func TestJobsDatabase(t *testing.T) {
 		}
 	}
 	t.Run("MinIO storage", func(t *testing.T) { testStorageDatabase(t, db) })
+	t.Run("PDF import", func(t *testing.T) { testPDFImport(t, db) })
 	t.Run("YouTube import", func(t *testing.T) { testYouTubeImport(t, db) })
 	generator := phonetics.Generator{Voice: "en-us", Run: func(context.Context, string, string) (string, error) { return "ipa", nil }}
 	segments := []core.Segment{{Text: "one two", StartMs: 0, EndMs: 1000, Tokens: []core.Token{{Text: "one", StartMs: 0, EndMs: 400}, {Text: "two", StartMs: 500, EndMs: 1000}}}}

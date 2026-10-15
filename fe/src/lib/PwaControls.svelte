@@ -1,6 +1,7 @@
 <script lang="ts">
  import { onMount } from 'svelte';
- import { dev } from '$app/environment';
+ import { dev, version } from '$app/environment';
+ import { inspectWorkerUpdate } from '$lib/pwa-updates';
  import { online } from '$lib/network';
  type InstallPrompt=Event&{prompt:()=>Promise<void>;userChoice:Promise<{outcome:'accepted'|'dismissed'}>};
  let installPrompt=$state<InstallPrompt|null>(null),installed=$state(false),dismissed=$state(false),ios=$state(false),help=$state(false),applying=$state(false),installing=$state(false),message=$state('');
@@ -12,14 +13,25 @@
  }
  function applyUpdate(){if(!waiting)return;applying=true;message='';waiting.postMessage({type:'PQ_DHARMA_APPLY_UPDATE'})}
  onMount(()=>{
-  let disposed=false,registration:ServiceWorkerRegistration|undefined;
+  let disposed=false,inspection=0,registration:ServiceWorkerRegistration|undefined;
   const connections=()=>online.set(navigator.onLine);
   const standalone=()=>{installed=window.matchMedia('(display-mode: standalone)').matches||('standalone' in navigator&&navigator.standalone===true)};
   const beforeInstall=(event:Event)=>{event.preventDefault();installPrompt=event as InstallPrompt};
   const appInstalled=()=>{installed=true;installPrompt=null};
-  const changed=()=>{if(applying)window.location.reload();else window.dispatchEvent(new Event('pq-dharma:offline-ready'))};
-  const inspectWaiting=()=>{if(registration?.waiting)waiting=registration.waiting};
-  const updateFound=()=>{const candidate=registration?.installing;if(candidate)candidate.addEventListener('statechange',()=>{if(candidate.state==='installed'&&!disposed)inspectWaiting()})};
+  const latestVersion=async()=>{
+   try{const response=await fetch('/_app/version.json',{cache:'no-store'});if(!response.ok)return null;const data=await response.json();return typeof data.version==='string'?data.version:null}catch{return null}
+  };
+  const inspectWaiting=async()=>{
+   const sequence=++inspection,candidate=registration?.waiting;
+   waiting=null;
+   if(!candidate)return;
+   const result=await inspectWorkerUpdate(candidate,version,latestVersion);
+   if(disposed||sequence!==inspection||registration?.waiting!==candidate)return;
+   if(result==='update')waiting=candidate;
+   else if(result==='current')candidate.postMessage({type:'PQ_DHARMA_APPLY_UPDATE'});
+  };
+  const changed=()=>{if(applying)window.location.reload();else{void inspectWaiting();window.dispatchEvent(new Event('pq-dharma:offline-ready'))}};
+  const updateFound=()=>{const candidate=registration?.installing;if(candidate)candidate.addEventListener('statechange',()=>{if(candidate.state==='installed'&&!disposed)void inspectWaiting()})};
   connections();standalone();
   ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   window.addEventListener('online',connections);window.addEventListener('offline',connections);
@@ -28,7 +40,7 @@
   if(!dev&&window.isSecureContext&&'serviceWorker' in navigator){
    navigator.serviceWorker.addEventListener('controllerchange',changed);
    void navigator.serviceWorker.register('/service-worker.js',{scope:'/',type:'module',updateViaCache:'none'}).then(value=>{
-    if(disposed)return;registration=value;inspectWaiting();value.addEventListener('updatefound',updateFound);updateFound();
+    if(disposed)return;registration=value;void inspectWaiting();value.addEventListener('updatefound',updateFound);updateFound();
     void value.update().catch(()=>{});
    }).catch(()=>{if(!disposed)message='Chưa lưu được ứng dụng để mở ngoại tuyến. Hãy tải lại khi có mạng.'});
   }

@@ -4,7 +4,7 @@ Mobile-first app: SvelteKit 2 / Svelte 5 / Tailwind 4 + Go + PostgreSQL + a Pyth
 
 ## Deploy on the server
 
-Compose uses the existing PostgreSQL container `posgres` and external Docker network `nginx_network`. It starts only `api`, `transcriber`, and `web`, without publishing host ports. See [deployment setup](docs/deployment.md) for database provisioning and Nginx Proxy Manager configuration.
+Compose uses the existing PostgreSQL container `posgres` and external Docker network `nginx_network`. It starts only `api`, `transcriber`, `tts`, and `web`, without publishing host ports. See [deployment setup](docs/deployment.md) for database provisioning and Nginx Proxy Manager configuration.
 
 Configure `.env` from `.env.example`, provision the dedicated database, then run:
 
@@ -35,7 +35,7 @@ Open http://localhost:5173 or the Network URL printed by Vite on your phone. Thi
 ## Pages
 
 - `/` opens `/library`. Legacy `/?recording={id}` links redirect to `/recordings/{id}`.
-- `/library` lists recordings with search and status filters. **Nhập bài** opens a shared YouTube/MP3 import dialog; successful upload opens the new recording's detail page.
+- `/library` lists recordings with search and status filters. **Nhập bài** opens a shared YouTube/MP3/PDF import dialog; successful upload opens the new recording's detail page.
 - `/recordings/{id}` contains the player, transcript, IPA, processing status, and segment editor. **← Thư viện** returns to the library. Audio stops on leaving a recording; playback position and preferences remain scoped to that recording. Route changes create a fresh player instance, avoiding audio or selection state leaking between recordings.
 
 ## Behavior
@@ -48,6 +48,35 @@ Open http://localhost:5173 or the Network URL printed by Vite on your phone. Thi
 - Settings include auto-scroll and readable text sizes. Auto-scroll follows the active word line, keeps it in the middle reading band between the sticky header and player, and looks ahead up to 0.4 seconds before line transitions. It pauses during manual scrolling, selection, rest intervals, settings, and transcript editing. Manual scrolling shows **Theo lời đang đọc** to resume. Reduced-motion preferences disable smooth movement. Fixed player accounts for mobile safe areas.
 - Original JSON3 is preserved. `import.json` is normalized at load from legacy `words` to canonical `tokens`. Each token has absolute `startMs`/`endMs`, `endEstimated`, and optional `phonetic: {type,text}`. IDs are assigned deterministically.
 - Word ending times are display estimates, not acoustic endpoints. Automatic captions and generated IPA need editorial review.
+
+## Import a PDF and create local speech
+
+Choose **Nhập bài → PDF → Audio**, upload an English PDF with a text layer,
+review/edit the extracted turns, choose voices, reading speed and the pause
+between turns, then choose **Tạo audio từ PDF**. Speaker labels `Woman:`,
+`Man:` and `Narrator:` select voices and are not spoken. Unlabelled text uses
+one narrator. Wrapped lines and page breaks are joined; review page numbers,
+headers and footers before submitting. Scanned/encrypted PDFs need conversion
+outside the app first; this release does not perform OCR. Limits: 20 MB,
+50 pages, 300 turns, 4,000 characters per turn and 60,000 characters total.
+
+The private `tts` service runs Kokoro-82M v1.0 INT8 with ONNX Runtime on CPU.
+Six English voices are available (British and American); default dialogue uses
+Emma and George. On the first synthesis it downloads approximately 121 MB of
+model/voice files from the upstream release into `tts_models`. After these
+assets are cached, synthesis does not send document text to any external API.
+The worker checkpoints each generated turn in `audio_uploads`, joins the turns
+into a 192 kbps MP3, and aligns the reviewed text with WhisperX before creating
+IPA. It does not transcribe the synthetic speech. Failed jobs can be retried
+without regenerating completed turns. Audio/source provenance uses the same
+local/MinIO storage path as other recordings. A thumbnail of the first page appears on the library card. The original PDF is used only for
+preview and is not retained; the reviewed text and voice settings are retained
+in the durable job and generated source metadata.
+
+TTS defaults to two CPUs/threads and a 2 GiB container memory limit. Configure
+`TTS_CPUS`, `TTS_CPU_THREADS` and `TTS_MEMORY` for the deployment. One background
+worker processes recordings sequentially. This first version targets English;
+other document languages and voice cloning are not supported.
 
 ## Import an MP3
 
@@ -160,7 +189,7 @@ The service worker is registered manually by `PwaControls.svelte` in production 
 
 This PWA phase supports installation and reading previously opened words/IPA offline. **Full audio downloads and offline audio seeking are not implemented.** Initial access, import, transcription, IPA generation and audio playback require a connection. Browser storage can be evicted; these caches are not a backup of imported recordings.
 
-Updates install in the background and wait. **Cập nhật & tải lại** explicitly activates the waiting worker; there is no automatic reload during playback. Cache cleanup affects only PQ Dharma's own versioned shell caches, retaining the preceding bundle for other open tabs and preserving saved transcript data.
+Updates install in the background. The page compares its build version with the waiting worker before showing **Cập nhật & tải lại**. A freshly loaded page already on that build activates the matching worker silently, without a banner or reload; older pages keep the explicit update button. Legacy workers without version messaging use the uncached server version as a fallback. No update is advertised when its version cannot be established. There is no automatic reload during playback. Cache cleanup affects only PQ Dharma's own versioned shell caches, retaining the preceding bundle for other open tabs and preserving saved transcript data.
 
 Use `docker compose up -d --build web` and open the configured HTTPS domain to test the production build. Compose does not publish port 3000 on the host. Service workers are intentionally disabled under `npm run dev`. For phones or a deployed domain, serve the app over HTTPS through your reverse proxy . HTTP on a LAN IP is not a secure context for service workers. Chrome/Edge expose installation in the app banner or browser menu; on iPhone/iPad use Safari → Share → Add to Home Screen.
 

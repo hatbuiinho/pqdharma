@@ -7,7 +7,7 @@
  import { beforeNavigate } from '$app/navigation';
  import { activeIndex, selectedRange, loopBoundary, practicePreferences, formatTime, formatPlayerTime, formatPrecise, type IpaVoice, type TimeRange, type Transcript } from '$lib/player';
  type Job={status:string;progress?:number;progressMessage?:string;id?:string;kind?:string;voice?:IpaVoice;error?:string};
- const stageNames:Record<string,string>={queued:'Chờ xử lý',transcribing:'Đang nhận dạng tiếng Anh',aligning:'Đang căn thời gian từng từ',aligned:'Chuẩn bị tạo phiên âm',phonetics:'Đang tạo IPA',ready:'Sẵn sàng',failed:'Xử lý chưa hoàn tất'};
+ const stageNames:Record<string,string>={queued:'Chờ xử lý',transcribing:'Đang xử lý audio',aligning:'Đang căn thời gian từng từ',aligned:'Chuẩn bị tạo phiên âm',phonetics:'Đang tạo IPA',ready:'Sẵn sàng',failed:'Xử lý chưa hoàn tất'};
  let {recordingId}: {recordingId:string} = $props();
  let recordingTitle=$state('Bài kinh'),job=$state<Job>({status:'ready'}),jobError=$state(''),showEditors=$state(false);
  const jobProgress=$derived(Math.max(0,Math.min(100,job.progress??0)));
@@ -252,7 +252,6 @@
    <button class="play-btn" disabled={!transcript||!$online&&!playing} onclick={togglePlay} aria-label={playing?'Tạm dừng':'Phát'}><Icon name={playing?'pause':'play'} size={22}/></button>
    <button class="skip-btn" disabled={!transcript||!$online} onclick={()=>seek(current+10)} aria-label="Tiến 10 giây"><Icon name="rotate-cw" size={20}/><span>10s</span></button>
    <button class="speed-btn" onclick={()=>controls=true} aria-label="Chỉnh tốc độ phát" aria-haspopup="dialog">{rate}×</button>
-   <button class="icon-btn" disabled={!transcript} onclick={()=>controls=true} aria-label="Cài đặt" aria-haspopup="dialog"><Icon name="sliders-horizontal" size={20}/></button>
   </div>
  </div></footer>{/if}
 </div>

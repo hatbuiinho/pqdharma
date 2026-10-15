@@ -16,7 +16,8 @@ worker.addEventListener('install',event=>{
   const shell=await fetch(new Request('/library',{cache:'reload'}));
   if(!shell.ok||!shell.headers.get('content-type')?.includes('text/html'))throw new Error('App shell unavailable');
   await cache.put(SHELL_KEY,shell);
-  // Updates wait until the user chooses to apply them. Playback is never reloaded automatically.
+  // Older pages request updates explicitly. Pages already on this build can
+  // activate it silently; neither path interrupts another tab's playback.
  })());
 });
 worker.addEventListener('activate',event=>{
@@ -28,6 +29,7 @@ worker.addEventListener('activate',event=>{
  })());
 });
 worker.addEventListener('message',event=>{
+ if(event.data?.type==='PQ_DHARMA_GET_VERSION')event.ports?.[0]?.postMessage({type:'PQ_DHARMA_VERSION',version});
  if(event.data?.type==='PQ_DHARMA_APPLY_UPDATE')event.waitUntil(worker.skipWaiting());
 });
 

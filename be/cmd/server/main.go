@@ -192,6 +192,11 @@ func main() {
 			}
 			registerStoredMedia(mux, db, store)
 			go runStorageSync(ctx, db, store, uploadDir, *sample)
+		} else {
+			mux.HandleFunc("GET /api/recordings/{id}/thumbnail", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "image/jpeg")
+				http.ServeFile(w, r, filepath.Join(uploadDir, filepath.Base(r.PathValue("id"))+".thumbnail.jpg"))
+			})
 		}
 		go processAligned(ctx, db, phonetics.Generator{Voice: *ipaVoice, Overrides: overrides})
 		registerImportRoutes(mux, db, uploadDir, store)
@@ -223,6 +228,10 @@ func main() {
 			thumbnailURL := ""
 			if store != nil && thumbnailHash != "" {
 				thumbnailURL = "/api/recordings/" + id + "/thumbnail?v=" + thumbnailHash
+			} else if store == nil {
+				if file, err := os.Stat(filepath.Join(uploadDir, filepath.Base(id)+".thumbnail.jpg")); err == nil {
+					thumbnailURL = fmt.Sprintf("/api/recordings/%s/thumbnail?v=%d", id, file.ModTime().UnixNano())
+				}
 			}
 			out = append(out, map[string]any{"durationMs": durationMs, "thumbnailUrl": thumbnailURL, "id": id, "title": title, "language": language, "recordingId": id, "status": status, "progress": progress})
 		}

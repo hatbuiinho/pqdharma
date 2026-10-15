@@ -1,0 +1,26 @@
+# Local development only. Production keeps its existing external PostgreSQL.
+# Start with: docker compose -f compose.yaml -f compose.local.yaml up -d --build
+services:
+  postgres-local:
+    container_name: pq-dharma-local-postgres
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?Set LOCAL_POSTGRES_PASSWORD in .env}
+    volumes:
+      - local_postgres_data:/var/lib/postgresql/data
+    networks: [nginx_network]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  api:
+    depends_on:
+      postgres-local:
+        condition: service_healthy
+  web:
+    ports:
+      - "127.0.0.1:3000:3000"
+volumes:
+  local_postgres_data:

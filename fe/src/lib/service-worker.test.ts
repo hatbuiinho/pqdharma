@@ -82,3 +82,10 @@ test('does not resurrect a deleted recording or substitute HTML for a missing of
  assert.equal((await h.request('/api/recordings/sample/transcript')!).status,404);
  h.setOffline(true);await assert.rejects(h.request('/api/recordings/sample/transcript')!,/offline/);
 });
+
+test('worker reports its actual cached build through the requesting page reply port',async()=>{
+ const h=harness();let reply:unknown;
+ await h.event('message',{data:{type:'PQ_DHARMA_GET_VERSION'},ports:[{postMessage:(message:unknown)=>{reply=message}}]});
+ assert.deepEqual(JSON.parse(JSON.stringify(reply)),{type:'PQ_DHARMA_VERSION',version:'new'});
+ assert.equal(h.counts().skips,0);
+});
