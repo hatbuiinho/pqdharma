@@ -37,8 +37,13 @@ func main() {
 	}
 	t, e := core.Load(*sample)
 	if e != nil {
-		log.Fatal(e)
+		if *fileMode || !os.IsNotExist(e) {
+			log.Fatal(e)
+		}
+		log.Printf("Sample unavailable; starting with database recordings only: %v", e)
 	}
+	sampleAvailable := e == nil
+	sampleExists := false
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var db *pgxpool.Pool
@@ -77,7 +82,8 @@ func main() {
 		if e != nil {
 			log.Fatal(e)
 		}
-		if !exists {
+		sampleExists = exists
+		if !exists && sampleAvailable {
 			tx, e := db.Begin(ctx)
 			if e != nil {
 				log.Fatal(e)
@@ -110,9 +116,10 @@ func main() {
 			if e = tx.Commit(ctx); e != nil {
 				log.Fatal(e)
 			}
+			sampleExists = true
 		}
 	}
-	if *autoIPA {
+	if *autoIPA && (*fileMode || sampleExists) {
 		overrides, err := phonetics.LoadOverrides(*ipaOverrides)
 		if err != nil {
 			log.Fatal(err)
@@ -266,7 +273,7 @@ func main() {
 			}
 		}
 		audioPath := filepath.Join(filepath.Dir(*sample), t.Recording.AudioFile)
-		if id != "sample" {
+		if db != nil || id != "sample" {
 			if db == nil {
 				http.NotFound(w, r)
 				return
@@ -276,7 +283,11 @@ func main() {
 				http.NotFound(w, r)
 				return
 			}
-			audioPath = filepath.Join(uploadDir, filepath.Base(file))
+			if id == "sample" {
+				audioPath = filepath.Join(filepath.Dir(*sample), filepath.Base(file))
+			} else {
+				audioPath = filepath.Join(uploadDir, filepath.Base(file))
+			}
 		}
 		w.Header().Set("Content-Type", "audio/mpeg")
 		http.ServeFile(w, r, audioPath)

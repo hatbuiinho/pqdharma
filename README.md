@@ -2,15 +2,18 @@
 
 Mobile-first app: SvelteKit 2 / Svelte 5 / Tailwind 4 + Go + PostgreSQL + a Python speech worker. Sample audio and original YouTube JSON3 are in `imports/aaaS89avDVU`.
 
-## Run with PostgreSQL
+## Deploy on the server
 
-Start Docker Desktop, then from this directory:
+Compose uses the existing PostgreSQL container `posgres` and external Docker network `nginx_network`. It starts only `api`, `transcriber`, and `web`, without publishing host ports. See [deployment setup](docs/deployment.md) for database provisioning and Nginx Proxy Manager configuration.
+
+Configure `.env` from `.env.example`, provision the dedicated database, then run:
 
 ```sh
-docker compose up --build
+docker compose config --quiet
+docker compose up -d --build
 ```
 
-Open http://localhost:3000. Database schema and sample are installed on the first API start; subsequent starts preserve database content. For mobile on the same Wi-Fi, open `http://YOUR_MAC_LAN_IP:3000`. Uploaded audio lives in the `audio_uploads` Docker volume; model downloads live in `speech_models`. Optional private MinIO storage is available; see [MinIO setup](docs/minio.md).
+Open the HTTPS domain configured in Nginx Proxy Manager. Database schema and sample are installed on the first API start; subsequent starts preserve database content. Uploaded audio lives in `audio_uploads`; downloaded speech models live in `speech_models`. Optional private MinIO storage is available; see [MinIO setup](docs/minio.md).
 
 ## Run without Docker (explicit file preview)
 
@@ -159,7 +162,7 @@ This PWA phase supports installation and reading previously opened words/IPA off
 
 Updates install in the background and wait. **Cập nhật & tải lại** explicitly activates the waiting worker; there is no automatic reload during playback. Cache cleanup affects only PQ Dharma's own versioned shell caches, retaining the preceding bundle for other open tabs and preserving saved transcript data.
 
-Use `docker compose up -d --build web` and open `http://localhost:3000` to test a production build locally. Service workers are intentionally disabled under `npm run dev`. For phones or a deployed domain, serve the app over HTTPS through your reverse proxy . HTTP on a LAN IP is not a secure context for service workers. Chrome/Edge expose installation in the app banner or browser menu; on iPhone/iPad use Safari → Share → Add to Home Screen.
+Use `docker compose up -d --build web` and open the configured HTTPS domain to test the production build. Compose does not publish port 3000 on the host. Service workers are intentionally disabled under `npm run dev`. For phones or a deployed domain, serve the app over HTTPS through your reverse proxy . HTTP on a LAN IP is not a secure context for service workers. Chrome/Edge expose installation in the app banner or browser menu; on iPhone/iPad use Safari → Share → Add to Home Screen.
 
 Validation: `npm --prefix fe run check`, `npm --prefix fe test`, `npm --prefix fe run build`. Worker tests execute the real handlers with CacheStorage/network doubles to check offline deep links, fresh/saved JSON, Range/mutation bypass, deleted-record handling, and explicit update activation.
 

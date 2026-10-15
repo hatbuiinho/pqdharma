@@ -1,23 +1,9 @@
 services:
-  postgres:
-    container_name: pq-dharma-postgres
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: dharma
-      POSTGRES_USER: dharma
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dharma_local}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dharma -d dharma"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
   api:
     container_name: pq-dharma-api
     build: ./be
     environment:
-      DATABASE_URL: postgres://dharma:${POSTGRES_PASSWORD:-dharma_local}@pq-dharma-postgres:5432/dharma?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
       UPLOAD_DIR: /uploads
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       S3_BUCKET: ${S3_BUCKET:-pqdharma}
@@ -28,15 +14,20 @@ services:
     volumes:
       - ./imports/aaaS89avDVU:/data:ro
       - audio_uploads:/uploads
-    command: ["./server", "-sample", "/data/import.json", "-ipa-voice", "${IPA_VOICE:-en-gb}", "-ipa-overrides", "/data/phonetic-overrides.json"]
-    depends_on:
-      postgres:
-        condition: service_healthy
+    command: ["./server", "-sample", "/data/import.json", "-ipa-voice", "${IPA_VOICE:-en-gb}", "-ipa-overrides", "${IPA_OVERRIDES:-}"]
+    restart: unless-stopped
+    networks: [nginx_network]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 120s
   transcriber:
     container_name: pq-dharma-transcriber
     build: ./transcriber
     environment:
-      DATABASE_URL: postgres://dharma:${POSTGRES_PASSWORD:-dharma_local}@pq-dharma-postgres:5432/dharma?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
       UPLOAD_DIR: /uploads
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       S3_BUCKET: ${S3_BUCKET:-pqdharma}
@@ -51,19 +42,28 @@ services:
       - speech_models:/models
       - ./imports/aaaS89avDVU:/sample:ro
     restart: unless-stopped
+    networks: [nginx_network]
+    cpus: "${TRANSCRIBER_CPUS:-2}"
+    mem_limit: ${TRANSCRIBER_MEMORY:-4g}
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
   web:
     container_name: pq-dharma-web
     build: ./fe
     environment:
       API_ORIGIN: http://pq-dharma-api:8080
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
+    restart: unless-stopped
+    networks: [nginx_network]
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 volumes:
-  postgres_data:
   audio_uploads:
   speech_models:
+
+networks:
+  nginx_network:
+    external: true
