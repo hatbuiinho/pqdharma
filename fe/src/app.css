@@ -205,3 +205,11 @@ select { display: block; width: 100%; height: 44px; background: white; border: 1
 .pdf-turn-actions { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .pdf-turn textarea { resize: vertical; line-height: 1.6; }
 @media (max-width: 420px) { .pdf-voice-settings { grid-template-columns: minmax(0, 1fr); } }
+
+/* Keep the listening dialog's actions visible while only its body scrolls. */
+.player-settings-dialog { overflow: hidden; }
+.player-settings-dialog[open] { display: flex; flex-direction: column; }
+.player-settings-dialog > .settings-header,
+.player-settings-dialog > .settings-footer { flex: none; background: #fffffc; position: relative; z-index: 1; }
+.player-settings-dialog > .settings-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.player-settings-dialog > .settings-footer { padding: 12px 18px; border-top: 1px solid #e7e7dd; }

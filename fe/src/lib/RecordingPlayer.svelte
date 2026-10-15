@@ -1,4 +1,5 @@
 <script lang="ts">
+ import Topbar from '$lib/Topbar.svelte';
  import Icon from '$lib/Icon.svelte';
  import { online } from '$lib/network';
  import { readingScrollDelta } from '$lib/reading-scroll';
@@ -193,10 +194,9 @@
  <meta name="description" content="Nghe kinh, theo từng lời và luyện tụng bằng đoạn bạn chọn."/>
 </svelte:head>
 <div class="app-shell" class:has-selection={selecting||range!==null}>
- <div class="site-header"><header class="topbar">
-  <a href="/library" class="brand"><img class="brand-logo" src="/icons/icon-192.png" width="37" height="37" alt=""/><span>dharma</span><span class="brand-sub">NGHE & TỤNG</span></a>
+ <div class="site-header"><Topbar>
   <button class="icon-btn" onclick={()=>controls=true} aria-label="Cài đặt" aria-haspopup="dialog"><Icon name="sliders-horizontal"/></button>
- </header>
+ </Topbar>
  <nav class="page-navigation" aria-label="Điều hướng bài kinh"><a class="back-link" href="/library">← Thư viện</a></nav></div>
  <main class="page-content">
   <div class="eyebrow mt-6">MỘT CHÚT TĨNH LẶNG MỖI NGÀY</div>
@@ -255,7 +255,7 @@
   </div>
  </div></footer>{/if}
 </div>
-<dialog bind:this={settingsDialog} class="settings-dialog" onclose={()=>controls=false} oncancel={()=>controls=false} aria-labelledby="settings-title">
+<dialog bind:this={settingsDialog} class="settings-dialog player-settings-dialog" onclose={()=>controls=false} oncancel={()=>controls=false} aria-labelledby="settings-title">
  <div class="settings-header"><h2 id="settings-title" class="text-lg font-semibold">Cài đặt nghe</h2><button class="icon-btn" onclick={()=>controls=false} aria-label="Đóng cài đặt"><Icon name="x"/></button></div>
  <div class="settings-content">
   <fieldset><legend>Tốc độ phát</legend><div class="speed-options">{#each [.5,.75,1,1.25,1.5] as value}<button class="chip" class:chip-active={rate===value} aria-pressed={rate===value} onclick={()=>changeRate(value)}>{value}×</button>{/each}</div></fieldset>
@@ -274,6 +274,6 @@
    </fieldset>
   {/if}
   <label class="scroll-setting"><input type="checkbox" bind:checked={showPhonetics} onchange={save}/>Hiển thị phiên âm IPA</label>
-  <button class="primary-btn w-full" onclick={()=>{save();controls=false}}><Icon name="check" size={18}/>Xong</button>
  </div>
+ <div class="settings-footer"><button class="primary-btn w-full" onclick={()=>{save();controls=false}}><Icon name="check" size={18}/>Xong</button></div>
 </dialog>
