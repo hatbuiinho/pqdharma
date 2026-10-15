@@ -1,7 +1,4 @@
 <script lang="ts">
- import { shareRecordingLink } from '$lib/share';
- let shareMessage=$state('');
- async function shareRecording(){shareMessage='';shareMessage=await shareRecordingLink(recordingId,recordingTitle)}
  import Topbar from '$lib/Topbar.svelte';
  import Icon from '$lib/Icon.svelte';
  import { online } from '$lib/network';
@@ -198,13 +195,10 @@
 </svelte:head>
 <div class="app-shell" class:has-selection={selecting||range!==null}>
  <div class="site-header"><Topbar>
-  <div class="topbar-actions"><button class="outline-btn" onclick={shareRecording}>Chia sẻ</button>
   <button class="icon-btn" onclick={()=>controls=true} aria-label="Cài đặt" aria-haspopup="dialog"><Icon name="sliders-horizontal"/></button>
-  </div>
  </Topbar>
  <nav class="page-navigation" aria-label="Điều hướng bài kinh"><a class="back-link" href="/library">← Thư viện</a></nav></div>
  <main class="page-content">
-  {#if shareMessage}<p role="status" class="saved-copy-note">{shareMessage}</p>{/if}
   <div class="eyebrow mt-6">MỘT CHÚT TĨNH LẶNG MỖI NGÀY</div>
   <div class="title-row"><div class="min-w-0"><h1 class="text-[28px] sm:text-4xl font-semibold tracking-tight leading-tight">{recordingTitle}</h1><p class="mt-2 text-sm text-stone-500">Bản đọc tiếng Anh · Theo từng lời</p></div></div>
   {#if transcript}<div class="import-actions"><button class="outline-btn" onclick={()=>showEditors=!showEditors}>{showEditors?'Ẩn sửa lời':'Chỉnh lời'}</button></div>{/if}
