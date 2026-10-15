@@ -1,0 +1,33 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Frontend dependencies and generated builds
+node_modules/
+.svelte-kit/
+/fe/build/
+
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local backend binary and test output
+/be/server
+coverage/
+.coverage
+htmlcov/
+
+# Logs and operating system files
+*.log
+.DS_Store
+._*
+Thumbs.db
+
+# Separate legacy project checked out locally
+/kinhchanhtinhtan/

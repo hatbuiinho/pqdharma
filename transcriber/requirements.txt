@@ -1,0 +1,10 @@
+faster-whisper==1.2.1
+transformers==4.55.4
+numpy==2.2.6
+pandas==2.2.3
+nltk==3.9.1
+psycopg[binary]==3.2.10
+
+yt-dlp[default]>=2026.3.3
+
+minio==7.2.20
