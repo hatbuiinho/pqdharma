@@ -16,6 +16,8 @@ services:
       timeout: 3s
       retries: 20
   api:
+    environment:
+      PUBLIC_ORIGIN: http://localhost:3000
     depends_on:
       postgres-local:
         condition: service_healthy

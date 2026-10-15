@@ -12,6 +12,12 @@
   reverse_proxy {$API_ORIGIN:http://pq-dharma-api:8080}
  }
 
+ @recording path_regexp recording ^/recordings/([^/]+)/?$
+ handle @recording {
+  rewrite * /api/share/recordings/{re.recording.1}
+  reverse_proxy {$API_ORIGIN:http://pq-dharma-api:8080}
+ }
+
  handle {
   @immutable path /_app/immutable/*
   header @immutable Cache-Control "public, max-age=31536000, immutable"

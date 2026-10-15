@@ -4,6 +4,7 @@ services:
     build: ./be
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
       UPLOAD_DIR: /uploads
       S3_ENDPOINT: ${S3_ENDPOINT:-}
       S3_BUCKET: ${S3_BUCKET:-pqdharma}

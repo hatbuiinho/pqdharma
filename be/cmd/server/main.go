@@ -201,6 +201,7 @@ func main() {
 		go processAligned(ctx, db, phonetics.Generator{Voice: *ipaVoice, Overrides: overrides})
 		registerImportRoutes(mux, db, uploadDir, store)
 		registerIPARoutes(mux, db)
+		registerShareRoutes(mux, db)
 	}
 	mux.HandleFunc("GET /api/sutras", func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {

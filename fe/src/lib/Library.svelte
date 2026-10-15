@@ -2,6 +2,9 @@
  import { onMount, untrack } from 'svelte';
  import { online } from '$lib/network';
  import Icon from './Icon.svelte';
+ import { shareRecordingLink } from '$lib/share';
+ let shareMessage=$state('');
+ async function shareItem(item:Item){shareMessage='';shareMessage=await shareRecordingLink(item.recordingId,item.title)}
  type Item = {recordingId:string;title:string;language:string;status:string;progress?:number;thumbnailUrl?:string;durationMs?:number};
  function formatDuration(ms:number){const seconds=Math.round(ms/1000);return seconds>=3600?`${Math.floor(seconds/3600)}:${String(Math.floor(seconds/60)%60).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`:`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`}
  type Filter = 'all'|'ready'|'processing'|'failed';
@@ -100,11 +103,15 @@
 {:else if items.length===0&&!listError}<div class="library-empty"><Icon name="library" size={36}/><h2>Thư viện chưa có bài kinh</h2><p>Nhập link YouTube hoặc file MP3 tiếng Anh để bắt đầu.</p><button class="primary-btn" onclick={()=>importOpen=true}>Nhập bài đầu tiên</button></div>
 {:else}
  <p class="library-count" aria-live="polite">{visible.length} bài kinh{query||filter!=='all'?` · trong ${items.length} bài`:''}</p>
+ {#if shareMessage}<p role="status" class="saved-copy-note">{shareMessage}</p>{/if}
  <div class="library-grid">{#each visible as item (item.recordingId)}
-  <a class="library-item" href={`/recordings/${encodeURIComponent(item.recordingId)}`}>
+  <article class="library-item">
+  <a class="library-item-link" href={`/recordings/${encodeURIComponent(item.recordingId)}`}>
    <div class="recording-thumbnail">{#if item.thumbnailUrl}<img src={item.thumbnailUrl} alt="" width="480" height="270" loading="lazy" decoding="async" onerror={event=>{item.thumbnailUrl=undefined}}/>{:else}<Icon name="leaf" size={40}/>{/if}</div>
-   <div class="recording-info"><h2>{item.title}</h2><p>{item.language==='en'?'Tiếng Anh':item.language}{#if item.durationMs&&item.durationMs>0} · <span aria-label={`Thời lượng ${formatDuration(item.durationMs)}`}>{formatDuration(item.durationMs)}</span>{/if} · {item.status==='ready'?'Nghe & luyện tụng':'Mở bài để xem tiến trình'}</p><span class="recording-status" class:status-ready={item.status==='ready'} class:status-failed={item.status==='failed'}>{statusNames[item.status]||'Đang xử lý'}{#if !['ready','failed'].includes(item.status)} · {item.progress??0}%{/if}</span></div>
+   <div class="recording-info"><h2>{item.title}</h2><p>{item.language==='en'?'Tiếng Anh':item.language}{#if item.durationMs&&item.durationMs>0} · <span aria-label={`Thời lượng ${formatDuration(item.durationMs)}`}>{formatDuration(item.durationMs)}</span>{/if} · {item.status==='ready'?'Nghe & luyện tụng':'Mở bài để xem tiến trình'}</p></div>
   </a>
+  <div class="recording-card-actions"><span class="recording-status" class:status-ready={item.status==='ready'} class:status-failed={item.status==='failed'}>{statusNames[item.status]||'Đang xử lý'}{#if !['ready','failed'].includes(item.status)} · {item.progress??0}%{/if}</span><button type="button" class="card-share-btn" onclick={()=>void shareItem(item)} aria-label={`Chia sẻ ${item.title}`}>Chia sẻ</button></div>
+  </article>
  {/each}</div>
  {#if visible.length===0&&items.length>0}<div class="library-empty"><h2>Không tìm thấy bài phù hợp</h2><p>Thử tên khác hoặc đổi bộ lọc.</p><button class="outline-btn" onclick={()=>{query='';filter='all'}}>Xem tất cả</button></div>{/if}
 {/if}

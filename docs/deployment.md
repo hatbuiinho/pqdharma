@@ -124,3 +124,20 @@ The API installs the schema and imports the sample when the sample files are
 present. The database persists in `local_postgres_data`. Keep using both Compose
 files for local starts so the web port and database dependency are included.
 Credentials stay in the Git-ignored `.env`; the app itself has no login accounts.
+
+## Recording sharing and link previews
+
+Set `PUBLIC_ORIGIN=https://pqdharma.hatbuinho.me` (replace with the deployed
+origin, with no path). Caddy forwards `/recordings/:id` HTML requests to Go,
+which adds escaped title/description, canonical URL, Open Graph and Twitter
+metadata to the current static `/index.html` shell fetched internally from
+`http://pq-dharma-web:3000`. `WEB_SHELL_ORIGIN` can override this internal origin
+when running the API outside Compose. Assets and APIs retain their existing
+routes. No user-agent sniffing is used. Missing recordings return 404.
+
+The player Share button uses native sharing when supported, otherwise copies
+the canonical route on the current origin. The preview image uses the recording
+thumbnail when available, with the app logo as fallback. Preview bots must be
+able to fetch both the page and image without authentication. Existing social
+previews may remain cached by the messaging platform after a metadata change.
+Local Compose explicitly uses `http://localhost:3000` as its origin.
