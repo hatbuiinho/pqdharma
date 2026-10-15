@@ -1,4 +1,7 @@
 <script lang="ts">
+ import Popup from '$lib/Popup.svelte';
+ import Combobox from '$lib/Combobox.svelte';
+ let owns=$state(false);
  import Topbar from '$lib/Topbar.svelte';
  import Icon from '$lib/Icon.svelte';
  import { online } from '$lib/network';
@@ -52,9 +55,7 @@
  const tokenIndex=$derived(activeIndex(tokens,current*1000,true));
  const segmentIndex=$derived(activeIndex(transcript?.segments??[],current*1000,true));
  const range=$derived(manualRange ?? (anchor!==null&&selectionEnd!==null ? selectedRange(tokens,anchor,selectionEnd):null));
- let settingsDialog = $state<HTMLDialogElement>();
  const selectedText=$derived(range ? tokens.filter(t=>t.startMs<range.endMs&&t.endMs>range.startMs).map(t=>t.text).join(' ') : '');
- $effect(()=>{if(!settingsDialog)return;if(controls&&!settingsDialog.open)settingsDialog.showModal();else if(!controls&&settingsDialog.open)settingsDialog.close()});
  beforeNavigate(()=>{save();if(audio)audio.pause();disableLoop()});
  function stopWait(){clearTimeout(waitTimer);waitTimer=undefined;waiting=false;waitRemaining=0}
  function disableLoop(){previewing=false;if(waiting)playing=false;looping=false;completed=0;stopWait()}
@@ -140,6 +141,7 @@
  }
  function metadata(){duration=audio.duration;current=Math.min(pendingPosition??current,Math.max(0,duration-0.1));audio.currentTime=current;pendingPosition=null;audio.playbackRate=rate;if(manualRange&&(manualRange.endMs>duration*1000||manualRange.startMs<0))manualRange=null}
  async function refreshJob(){
+  try{const access=await fetch(`/api/recordings/${encodeURIComponent(recordingId)}/access`);owns=access.ok&&(await access.json()).owned}catch{owns=false}
   const r=await fetch(`/api/recordings/${encodeURIComponent(recordingId)}/job`);
   if(r.ok){job=await r.json();jobError=''}
  }
@@ -167,7 +169,9 @@
    if(disposed||polling)return;polling=true;if(refreshForCache){loadedRevision='';refreshForCache=false}
    try{
     if(!navigator.onLine){offlineReading=true;loadedRevision='offline';if(!transcript)await loadTranscript('offline');syncError='';loading=false;return}
+    const access=await fetch(`/api/recordings/${encodeURIComponent(recordingId)}/access`,{signal:abort.signal});owns=access.ok&&(await access.json()).owned;
     const jr=await fetch(`/api/recordings/${encodeURIComponent(recordingId)}/job`,{signal:abort.signal});
+    if(jr.status===401||jr.status===403||jr.status===404){pause();transcript=null;owns=false;loading=false;syncError='Bài không tồn tại hoặc bạn chưa được cấp quyền. Đăng nhập từ Thư viện để xem bài riêng tư.';return}
     if(jr.ok){job=await jr.json();syncError='';if(job.kind==='ipa'&&job.status==='failed'){ipaPending=null;ipaError=job.error||'Không tạo được IPA.'}}else if(jr.status!==404)throw new Error('Không tải được trạng thái xử lý.');
     const marker=job.status==='ready' ? (job.id||'initial') : 'previous';
     if((job.status==='ready'||transcript===null&&(job.kind==='edit'||job.kind==='ipa'))&&loadedRevision!==marker){
@@ -194,15 +198,13 @@
  <meta name="description" content="Nghe kinh, theo từng lời và luyện tụng bằng đoạn bạn chọn."/>
 </svelte:head>
 <div class="app-shell" class:has-selection={selecting||range!==null}>
- <div class="site-header"><Topbar>
-  <button class="icon-btn" onclick={()=>controls=true} aria-label="Cài đặt" aria-haspopup="dialog"><Icon name="sliders-horizontal"/></button>
- </Topbar>
+ <div class="site-header"><Topbar back/>
  <nav class="page-navigation" aria-label="Điều hướng bài kinh"><a class="back-link" href="/library">← Thư viện</a></nav></div>
  <main class="page-content">
   <div class="eyebrow mt-6">MỘT CHÚT TĨNH LẶNG MỖI NGÀY</div>
   <div class="title-row"><div class="min-w-0"><h1 class="text-[28px] sm:text-4xl font-semibold tracking-tight leading-tight">{recordingTitle}</h1><p class="mt-2 text-sm text-stone-500">Bản đọc tiếng Anh · Theo từng lời</p></div></div>
-  {#if transcript}<div class="import-actions"><button class="outline-btn" onclick={()=>showEditors=!showEditors}>{showEditors?'Ẩn sửa lời':'Chỉnh lời'}</button></div>{/if}
-  {#if job.status!=='ready'&&$online}<section class="panel mt-4" aria-live="polite"><div class="processing-heading"><p class="font-semibold">{stageNames[job.status]||job.status}</p><span class="processing-percent">{jobProgress}%</span></div><progress class="processing-progress" max="100" value={jobProgress} aria-label="Tiến độ xử lý bài" aria-valuetext={`${jobProgress}% · ${stageNames[job.status]||job.status}`}>{jobProgress}%</progress>{#if job.progressMessage}<p class="text-sm mt-2 text-stone-600">{job.progressMessage}</p>{/if}<p class="text-xs mt-2 text-stone-500">Tiến độ ước tính theo từng bước xử lý.</p><p class="text-sm mt-2 text-stone-600">{job.kind==='edit'?'Đang cập nhật đoạn lời; bạn vẫn có thể xem bản hiện tại.':'Bạn có thể đóng trang và quay lại. Bài được xử lý trong nền.'}</p>{#if job.status==='failed'}<p class="text-sm text-red-800 mt-2">{job.error||'Không xử lý được audio.'}</p><button class="outline-btn mt-3" disabled={!$online} onclick={retryJob}>Thử lại</button>{/if}{#if jobError}<p role="alert">{jobError}</p>{/if}</section>{/if}
+  {#if transcript&&owns}<div class="import-actions"><button class="outline-btn" onclick={()=>showEditors=!showEditors}>{showEditors?'Ẩn sửa lời':'Chỉnh lời'}</button></div>{/if}
+  {#if job.status!=='ready'&&$online}<section class="panel mt-4" aria-live="polite"><div class="processing-heading"><p class="font-semibold">{stageNames[job.status]||job.status}</p><span class="processing-percent">{jobProgress}%</span></div><progress class="processing-progress" max="100" value={jobProgress} aria-label="Tiến độ xử lý bài" aria-valuetext={`${jobProgress}% · ${stageNames[job.status]||job.status}`}>{jobProgress}%</progress>{#if job.progressMessage}<p class="text-sm mt-2 text-stone-600">{job.progressMessage}</p>{/if}<p class="text-xs mt-2 text-stone-500">Tiến độ ước tính theo từng bước xử lý.</p><p class="text-sm mt-2 text-stone-600">{job.kind==='edit'?'Đang cập nhật đoạn lời; bạn vẫn có thể xem bản hiện tại.':'Bạn có thể đóng trang và quay lại. Bài được xử lý trong nền.'}</p>{#if job.status==='failed'&&owns}<p class="text-sm text-red-800 mt-2">{job.error||'Không xử lý được audio.'}</p><button class="outline-btn mt-3" disabled={!$online} onclick={retryJob}>Thử lại</button>{/if}{#if jobError}<p role="alert">{jobError}</p>{/if}</section>{/if}
   {#if transcript}<section id="practice" class="practice-card">
    <div class="practice-heading"><div class="min-w-0"><div class="eyebrow">LUYỆN TỪNG ĐOẠN</div><p class="text-sm mt-2 text-stone-600 leading-relaxed" aria-live="polite">{selecting?(anchor===null?'Chạm từ bắt đầu trong lời kinh.':'Chạm từ cuối để hoàn tất.'):range?`${formatPrecise(range.startMs)} — ${formatPrecise(range.endMs)}`:'Chọn một đoạn lời để nghe lại.'}</p></div>
     <button class="outline-btn" disabled={!transcript} onclick={chooseWords}><Icon name={selecting?'x':'text-cursor-input'} size={18}/>{selecting?'Hủy':range?'Chọn lại':'Chọn đoạn'}</button>
@@ -255,16 +257,14 @@
   </div>
  </div></footer>{/if}
 </div>
-<dialog bind:this={settingsDialog} class="settings-dialog player-settings-dialog" onclose={()=>controls=false} oncancel={()=>controls=false} aria-labelledby="settings-title">
- <div class="settings-header"><h2 id="settings-title" class="text-lg font-semibold">Cài đặt nghe</h2><button class="icon-btn" onclick={()=>controls=false} aria-label="Đóng cài đặt"><Icon name="x"/></button></div>
- <div class="settings-content">
+<Popup open={controls} title="Cài đặt nghe" class="player-settings-dialog" onrequestclose={()=>controls=false} onclose={()=>controls=false}>
   <fieldset><legend>Tốc độ phát</legend><div class="speed-options">{#each [.5,.75,1,1.25,1.5] as value}<button class="chip" class:chip-active={rate===value} aria-pressed={rate===value} onclick={()=>changeRate(value)}>{value}×</button>{/each}</div></fieldset>
-  <div class="control-grid"><label>Số lượt lặp<select bind:value={repeats} onchange={()=>{disableLoop();save()}}><option value={0}>Liên tục</option><option value={3}>3 lượt</option><option value={5}>5 lượt</option><option value={10}>10 lượt</option></select></label><label>Nghỉ giữa lượt<select bind:value={gap} onchange={save}><option value={0}>Không nghỉ</option><option value={.5}>0,5 giây</option><option value={1}>1 giây</option><option value={2}>2 giây</option><option value={4}>4 giây</option><option value={6}>6 giây</option></select></label></div>
-  <div class="control-grid"><label>Cỡ chữ<select bind:value={fontSize} onchange={save}><option value={20}>Nhỏ</option><option value={22}>Vừa</option><option value={26}>Lớn</option><option value={30}>Rất lớn</option></select></label><label class="scroll-setting"><input type="checkbox" bind:checked={autoScroll} onchange={()=>{followPaused=false;followForce=true;save()}}/>Tự cuộn theo lời</label></div>
-  <label>Cách hiển thị IPA<select bind:value={ipaStyle} onchange={save}><option value="readable">IPA dễ đọc</option><option value="original">IPA gốc</option></select></label>
-  {#if transcript?.ipaEditable}
+  <div class="control-grid"><label>Số lượt lặp<Combobox label="Số lượt lặp" bind:value={repeats} onchange={()=>{disableLoop();save()}} options={[{value:0,label:"Liên tục"},{value:3,label:"3 lượt"},{value:5,label:"5 lượt"},{value:10,label:"10 lượt"}]}/></label><label>Nghỉ giữa lượt<Combobox label="Nghỉ giữa lượt" bind:value={gap} onchange={save} options={[{value:0,label:"Không nghỉ"},{value:.5,label:"0,5 giây"},{value:1,label:"1 giây"},{value:2,label:"2 giây"},{value:4,label:"4 giây"},{value:6,label:"6 giây"}]}/></label></div>
+  <div class="control-grid"><label>Cỡ chữ<Combobox label="Cỡ chữ" bind:value={fontSize} onchange={save} options={[{value:20,label:"Nhỏ"},{value:22,label:"Vừa"},{value:26,label:"Lớn"},{value:30,label:"Rất lớn"}]}/></label><label class="scroll-setting"><input type="checkbox" bind:checked={autoScroll} onchange={()=>{followPaused=false;followForce=true;save()}}/>Tự cuộn theo lời</label></div>
+  <label>Cách hiển thị IPA<Combobox label="Cách hiển thị IPA" bind:value={ipaStyle} onchange={save} options={[{value:"readable",label:"IPA dễ đọc"},{value:"original",label:"IPA gốc"}]}/></label>
+  {#if transcript?.ipaEditable&&owns}
    <fieldset class="ipa-settings"><legend>Phiên âm IPA</legend>
-    <label>Giọng IPA<select bind:value={ipaChoice} onchange={chooseIPAVoice} disabled={ipaSaving}><option value="en-gb">Anh–Anh</option><option value="en-us">Anh–Mỹ</option></select></label>
+    <label>Giọng IPA<Combobox label="Giọng IPA" bind:value={ipaChoice} onchange={chooseIPAVoice} disabled={ipaSaving} options={[{value:"en-gb",label:"Anh–Anh"},{value:"en-us",label:"Anh–Mỹ"}]}/></label>
     <p class="ipa-caption">{transcript.defaultIpaVoice?`Mặc định của bài: ${ipaLabels[transcript.defaultIpaVoice]}.`:'Bài này đang dùng IPA cũ, chưa xác định giọng.'}</p>
     {#if !ipaReady}<p class="ipa-caption">Chưa có bản {ipaLabels[ipaChoice]} hoàn chỉnh. Tạo IPA để sử dụng; bản hiện tại vẫn được giữ.</p>{/if}
     <div class="ipa-actions"><button class="outline-btn" disabled={jobBusy||ipaSaving||!$online} onclick={generateIPA}>{ipaReady?'Tạo lại IPA':`Tạo IPA ${ipaLabels[ipaChoice]}`}</button><button class="outline-btn" disabled={!ipaReady||jobBusy||ipaSaving||!$online||transcript.defaultIpaVoice===ipaChoice} onclick={setDefaultIPA}>Đặt mặc định cho bài</button></div>
@@ -274,6 +274,5 @@
    </fieldset>
   {/if}
   <label class="scroll-setting"><input type="checkbox" bind:checked={showPhonetics} onchange={save}/>Hiển thị phiên âm IPA</label>
- </div>
- <div class="settings-footer"><button class="primary-btn w-full" onclick={()=>{save();controls=false}}><Icon name="check" size={18}/>Xong</button></div>
-</dialog>
+ {#snippet footer()}<button type="button" class="primary-btn w-full" onclick={()=>{save();controls=false}}><Icon name="check" size={18}/>Xong</button>{/snippet}
+</Popup>

@@ -6,7 +6,7 @@ export function cachePolicy(request: {url:string;method:string;mode?:string;hasR
  if(url.origin!==origin||request.method!=='GET'||request.hasRange)return 'network';
  const path=url.pathname;
  if(request.mode==='navigate'&&(path==='/'||path==='/library'||/^\/recordings\/[^/]+\/?$/.test(path)))return 'navigation';
- if(path==='/api/sutras'||/^\/api\/recordings\/[^/]+\/transcript$/.test(path))return 'data';
+ if(path==='/api/sutras'||/^\/api\/recordings\/[^/]+\/transcript$/.test(path))return 'network';
  if(path.startsWith('/_app/immutable/')||path.startsWith('/icons/')||path==='/manifest.webmanifest')return 'asset';
  return 'network';
 }

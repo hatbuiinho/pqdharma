@@ -8,21 +8,23 @@ services:
       POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?Set LOCAL_POSTGRES_PASSWORD in .env}
     volumes:
       - local_postgres_data:/var/lib/postgresql/data
-    networks: [nginx_network]
+    # networks: [nginx_network]
+    ports:
+      - "5432:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 3s
       timeout: 3s
       retries: 20
-  api:
-    environment:
-      PUBLIC_ORIGIN: http://localhost:3000
-    depends_on:
-      postgres-local:
-        condition: service_healthy
-  web:
-    ports:
-      - "127.0.0.1:3000:3000"
+  # api:
+  #   environment:
+  #     PUBLIC_ORIGIN: http://localhost:3000
+  #   depends_on:
+  #     postgres-local:
+  #       condition: service_healthy
+  # web:
+  #   ports:
+  #     - "127.0.0.1:3000:3000"
 volumes:
   local_postgres_data:

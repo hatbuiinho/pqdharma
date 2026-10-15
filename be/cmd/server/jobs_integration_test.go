@@ -42,7 +42,7 @@ func TestJobsDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	for _, file := range []string{"../../migrations/001_init.sql", "../../migrations/002_jobs.sql", "../../migrations/003_job_progress.sql", "../../migrations/004_ipa_voices.sql", "../../migrations/005_media.sql"} {
+	for _, file := range []string{"../../migrations/001_init.sql", "../../migrations/002_jobs.sql", "../../migrations/003_job_progress.sql", "../../migrations/004_ipa_voices.sql", "../../migrations/005_media.sql", "../../migrations/006_duration.sql", "../../migrations/007_users.sql", "../../migrations/008_user_status.sql", "../../migrations/009_user_name.sql"} {
 		migration, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)
@@ -52,6 +52,9 @@ func TestJobsDatabase(t *testing.T) {
 		}
 	}
 	t.Run("MinIO storage", func(t *testing.T) { testStorageDatabase(t, db) })
+	t.Run("User access", func(t *testing.T) { testUserAccess(t, db) })
+	t.Run("User lifecycle", func(t *testing.T) { testUserLifecycle(t, db) })
+	t.Run("Recording sharing", func(t *testing.T) { testRecordingSharing(t, db) })
 	t.Run("PDF import", func(t *testing.T) { testPDFImport(t, db) })
 	t.Run("YouTube import", func(t *testing.T) { testYouTubeImport(t, db) })
 	generator := phonetics.Generator{Voice: "en-us", Run: func(context.Context, string, string) (string, error) { return "ipa", nil }}

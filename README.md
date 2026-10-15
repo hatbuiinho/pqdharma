@@ -32,6 +32,35 @@ npm run dev -- --port 5173
 
 Open http://localhost:5173 or the Network URL printed by Vite on your phone. This mode does not use PostgreSQL. For a separately running PostgreSQL, set `DATABASE_URL` and omit `-file-mode`.
 
+## Backend development with Air
+
+Air rebuilds and restarts the API when Go, migration SQL, or JSON files in `be/` change:
+
+```sh
+cd be
+make serve
+# Equivalent: air -c .air.toml
+```
+
+Install Air if needed: `go install github.com/air-verse/air@v1.63.4`
+(add `$(go env GOPATH)/bin` to your `PATH`). The development startup script loads `be/.env` as shell environment assignments
+(for example, `DATABASE_URL='postgres://…'`). Values in this file override inherited
+environment variables. Air watches this file and reloads the server when it changes.
+The root `.env` remains for Docker Compose.
+For host development, use database/S3 addresses reachable from your machine
+instead of Docker service names. The API listens on `:8080` by default;
+Vite already proxies `/api` to `http://localhost:8080`.
+
+For a preview without PostgreSQL or eSpeak (requires the sample import JSON
+and an empty `S3_ENDPOINT` in `be/.env`):
+
+```sh
+cd be
+make serve ARGS="-file-mode -auto-ipa=false"
+```
+
+Build output lives in ignored `be/tmp/`. Production Docker builds are unchanged.
+
 ## Pages
 
 - `/` opens `/library`. Legacy `/?recording={id}` links redirect to `/recordings/{id}`.
@@ -210,3 +239,14 @@ Apply with `docker compose up -d --build api transcriber web`.
 ## Private MinIO storage
 
 See [setup, migration, object layout, and operational checklist](docs/minio.md). With S3 enabled, audio and source assets live in MinIO; PostgreSQL remains the source for editable transcripts/IPA. The same-origin audio API preserves Range playback. Leave `S3_ENDPOINT` empty for local-only storage.
+
+## Shared popup layout
+
+Use `fe/src/lib/Popup.svelte` for modal dialogs. Supply `open`, `title`, and
+`onrequestclose`; body content goes in the default snippet and actions in the
+`footer` snippet. The header/footer remain outside the scrolling body. Keep form
+fields in a form with a unique ID; submit buttons in the footer reference that ID
+with `form={formId}` so Enter and native validation continue to work. Set `busy`
+while saving to block dismissal. Put unsaved-change checks in `onrequestclose`.
+The component handles Escape, native modal focus, viewport sizing, and the mobile
+keyboard through `visualViewport`. Avoid separate scroll containers around it.

@@ -7,11 +7,11 @@ test('app-shell fallback covers deep links and the legacy recording query only f
  for(const path of ['/','/?recording=sample','/library','/recordings/new-id','/recordings/new-id/'])assert.equal(policy(path,{mode:'navigate'}),'navigation');
  assert.equal(policy('/recordings/new-id'),'network');
  assert.equal(policy('/not-an-app-route',{mode:'navigate'}),'network');
- assert.equal(policy('/api/sutras',{mode:'navigate'}),'data');
+ assert.equal(policy('/api/sutras',{mode:'navigate'}),'network');
 });
-test('only stable JSON snapshots are cached; processing, mutations and media stay live',()=>{
- assert.equal(policy('/api/sutras'),'data');
- assert.equal(policy('/api/recordings/sample/transcript'),'data');
+test('account data and media always require network authorization',()=>{
+ assert.equal(policy('/api/sutras'),'network');
+ assert.equal(policy('/api/recordings/sample/transcript'),'network');
  for(const path of ['/api/recordings/sample/job','/api/recordings/sample/audio','/api/recordings/sample/audio?v=1','/api/health'])assert.equal(policy(path),'network');
  for(const method of ['POST','PATCH','DELETE'])assert.equal(policy('/api/recordings/sample/transcript',{method}),'network');
  assert.equal(policy('/api/recordings/sample/transcript',{hasRange:true}),'network');

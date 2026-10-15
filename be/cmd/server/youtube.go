@@ -106,7 +106,7 @@ func registerYouTubeRoutes(mux *http.ServeMux, db *pgxpool.Pool) {
 			return
 		}
 		var existingTitle string
-		err = tx.QueryRow(r.Context(), "SELECT s.title FROM recordings r JOIN sutras s ON s.id=r.sutra_id WHERE r.source_url=$1 LIMIT 1", canonical).Scan(&existingTitle)
+		err = tx.QueryRow(r.Context(), "SELECT s.title FROM recordings r JOIN sutras s ON s.id=r.sutra_id WHERE r.source_url=$1 AND COALESCE(r.owner_id,'')=$2 AND r.deleted_at IS NULL LIMIT 1", canonical, currentUser(r).ID).Scan(&existingTitle)
 		if err == nil {
 			http.Error(w, "Video này đã có trong thư viện: "+existingTitle, 409)
 			return
@@ -121,6 +121,10 @@ func registerYouTubeRoutes(mux *http.ServeMux, db *pgxpool.Pool) {
 		if err == nil {
 			_, err = tx.Exec(r.Context(), "INSERT INTO recordings(id,sutra_id,title,audio_file,source_url,status) VALUES($1,$1,$2,$3,$4,'processing')", id, title, id+".mp3", canonical)
 		}
+		if err == nil && currentUser(r).ID != "" {
+			_, err = tx.Exec(r.Context(), "UPDATE recordings SET owner_id=$2 WHERE id=$1", id, currentUser(r).ID)
+		}
+
 		if err == nil {
 			_, err = tx.Exec(r.Context(), "INSERT INTO processing_jobs(id,recording_id,kind,status,payload) VALUES($1,$2,'transcribe','queued',$3)", jobID, id, payload)
 		}

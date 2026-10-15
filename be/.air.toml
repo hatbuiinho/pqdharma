@@ -1,0 +1,26 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/server ./cmd/server"
+entrypoint = ["sh", "./scripts/dev-server.sh"]
+include_ext = ["go", "sql", "json"]
+include_file = ["go.mod", "go.sum", ".env", "scripts/dev-server.sh"]
+exclude_dir = ["tmp", "vendor", ".gocache", "uploads"]
+exclude_regex = ["_test\\.go$"]
+exclude_unchanged = true
+delay = 300
+stop_on_error = true
+send_interrupt = true
+kill_delay = "2s"
+log = "build-errors.log"
+
+[log]
+time = true
+
+[misc]
+clean_on_exit = true
+
+[screen]
+clear_on_rebuild = false
+keep_scroll = true

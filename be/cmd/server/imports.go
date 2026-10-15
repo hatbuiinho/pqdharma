@@ -134,6 +134,10 @@ func registerImportRoutes(mux *http.ServeMux, db *pgxpool.Pool, dir string, stor
 		if err == nil && store != nil {
 			_, err = tx.Exec(r.Context(), "INSERT INTO recording_assets(recording_id,kind,object_key,content_type,size_bytes,sha256) VALUES($1,'audio',$2,'audio/mpeg',$3,$4)", id, objectKey, objectSize, hash)
 		}
+		if err == nil && currentUser(r).ID != "" {
+			_, err = tx.Exec(r.Context(), "UPDATE recordings SET owner_id=$2 WHERE id=$1", id, currentUser(r).ID)
+		}
+
 		if err == nil {
 			_, err = tx.Exec(r.Context(), "INSERT INTO processing_jobs(id,recording_id,kind,status) VALUES($1,$2,'transcribe','queued')", jobID, id)
 		}

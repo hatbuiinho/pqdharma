@@ -5,7 +5,7 @@ import { cachePolicy } from './lib/pwa-policy';
 const worker=globalThis as unknown as ServiceWorkerGlobalScope;
 const PREFIX='pq-dharma-shell-';
 const SHELL=PREFIX+version;
-const DATA='pq-dharma-data-v1';
+const DATA='pq-dharma-data-v2';
 const SHELL_KEY='/__pq_dharma_app_shell__';
 const ASSETS=[...build,...files.filter(path=>!path.startsWith('/branding/'))];
 
@@ -22,6 +22,7 @@ worker.addEventListener('install',event=>{
 });
 worker.addEventListener('activate',event=>{
  event.waitUntil((async()=>{
+  await Promise.all((await caches.keys()).filter(key=>key.startsWith('pq-dharma-data-')).map(key=>caches.delete(key)));
   const keys=(await caches.keys()).filter(key=>key.startsWith(PREFIX)&&key!==SHELL);
   // Keep the preceding bundle so other open tabs can still load their chunks.
   await Promise.all(keys.slice(0,-1).map(key=>caches.delete(key)));
@@ -88,5 +89,6 @@ worker.addEventListener('fetch',event=>{
  const policy=cachePolicy({url:request.url,method:request.method,mode:request.mode,hasRange:request.headers.has('range')},worker.location.origin);
  if(policy==='navigation')event.respondWith(navigation(request));
  else if(policy==='asset')event.respondWith(cachedAsset(request));
- else if(policy==='data')event.respondWith(savedData(request));
+ // Private library/transcript data always requires a fresh authorization check.
+ else if(policy==='data')event.respondWith(fetch(request,{cache:'no-store'}));
 });

@@ -141,3 +141,51 @@ thumbnail when available, with the app logo as fallback. Preview bots must be
 able to fetch both the page and image without authentication. Existing social
 previews may remain cached by the messaging platform after a metadata change.
 Local Compose explicitly uses `http://localhost:3000` as its origin.
+
+## Accounts and recording privacy
+
+Before the first authenticated startup, set `ADMIN_EMAIL` and a strong
+`ADMIN_PASSWORD` (12–72 characters) in the private `.env`. Startup creates this
+admin if the email is new and assigns unowned existing recordings to it. Existing
+passwords are never overwritten. Existing recordings become private by default.
+The local bootstrap account is configured in the local `.env`; inspect that
+file for its password rather than committing or printing it.
+
+Admins can create users from the topbar profile menu. Each user owns a separate
+library. Owner card management changes title, visibility (private/shared/public),
+recipient email addresses, or soft-deletes a recording. Trash restores it. Shared
+recipients must already have accounts and have listen-only access. Only public
+recordings appear in Explore and expose public OG previews. App sessions use
+hashed random tokens and HttpOnly SameSite cookies, with Secure enabled for an
+HTTPS PUBLIC_ORIGIN. Configure PUBLIC_ORIGIN accurately for CSRF origin checks.
+
+**Remove anonymous/public MinIO bucket access before deploying private content.**
+The app authorizes media via its API; a public bucket bypasses those checks.
+No MinIO bucket permissions are changed automatically. Existing downloaded files
+cannot be recalled. This version stops caching library/transcript data offline
+and removes old account data caches when the updated service worker activates.
+Users should close old tabs and apply the new PWA build during this migration.
+No self registration, password reset or email delivery is included in this release.
+
+### Account administration
+
+Administrators can create regular users or additional administrators from `/users`.
+New accounts default to the regular user role. Deactivating an account revokes its
+sessions and blocks login; existing recordings, sharing grants, and roles remain
+stored. Reactivating restores login with the existing password. Users who are
+inactive are omitted from the sharing search. Administrators cannot deactivate
+their own account; concurrent changes also preserve an active administrator.
+Migration `008_user_status.sql` runs automatically when the API starts.
+
+Signed-in users can change their own password from the account menu. This requires
+the current password, a different new password (at least 12 characters, up to 72
+UTF-8 bytes), and confirmation in the form. Successful changes revoke all sessions
+and prompt the user to sign in again.
+
+The library Share button opens recording access settings. Owners can add/remove
+existing accounts as viewers and select restricted or public access. Restricted
+access with no viewers maps to private; with viewers it maps to shared. Public
+recordings are also discoverable in Explore. Named grants are retained while
+public so they remain available when returning to restricted access. Copying a
+link does not grant access. Permission changes use a dedicated access endpoint;
+renaming a recording preserves its current permissions.

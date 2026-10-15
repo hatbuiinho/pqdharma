@@ -42,9 +42,9 @@ func registerShareRoutes(mux *http.ServeMux, db *pgxpool.Pool) {
 			return
 		}
 		id := r.PathValue("id")
-		var title, language, hash string
+		var title, language, hash, visibility string
 		var duration int64
-		err = db.QueryRow(r.Context(), `SELECT s.title,s.language,COALESCE(r.duration_ms,0),COALESCE(a.sha256,'') FROM recordings r JOIN sutras s ON s.id=r.sutra_id LEFT JOIN recording_assets a ON a.recording_id=r.id AND a.kind='thumbnails' WHERE r.id=$1`, id).Scan(&title, &language, &duration, &hash)
+		err = db.QueryRow(r.Context(), `SELECT s.title,s.language,COALESCE(r.duration_ms,0),COALESCE(a.sha256,''),r.visibility FROM recordings r JOIN sutras s ON s.id=r.sutra_id LEFT JOIN recording_assets a ON a.recording_id=r.id AND a.kind='thumbnails' WHERE r.id=$1`, id).Scan(&title, &language, &duration, &hash, &visibility)
 		if err != nil { // Distinguish missing recordings from database failures.
 			if err == pgx.ErrNoRows {
 				http.NotFound(w, r)
@@ -66,6 +66,11 @@ func registerShareRoutes(mux *http.ServeMux, db *pgxpool.Pool) {
 		if duration > 0 {
 			seconds := duration / 1000
 			description = fmt.Sprintf("%s · %d:%02d · Nghe và luyện từng lời cùng PQ Dharma.", language, seconds/60, seconds%60)
+		}
+		if visibility != "public" {
+			title = "Bài nghe riêng tư"
+			description = "Đăng nhập bằng tài khoản được cấp quyền để nghe bài."
+			image = origin + "/icons/icon-512.png"
 		}
 		shellOrigin := strings.TrimRight(os.Getenv("WEB_SHELL_ORIGIN"), "/")
 		if shellOrigin == "" {
@@ -90,7 +95,7 @@ func registerShareRoutes(mux *http.ServeMux, db *pgxpool.Pool) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "no-store")
 		io.WriteString(w, shareHTML(string(shell), title, description, origin+"/recordings/"+url.PathEscape(id), image))
 	})
 }

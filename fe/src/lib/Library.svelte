@@ -1,18 +1,32 @@
 <script lang="ts">
+ import Popup from '$lib/Popup.svelte';
+ import Combobox from '$lib/Combobox.svelte';
+ import ShareDialog from '$lib/ShareDialog.svelte';
  import { onMount, untrack } from 'svelte';
  import { online } from '$lib/network';
+ import {auth,refreshAuth} from '$lib/auth';
+ import {createLibraryLoader} from '$lib/library-loader';
  import Icon from './Icon.svelte';
- import { shareRecordingLink } from '$lib/share';
+ const uid=$props.id();
+ const importFormId=uid+'-import',manageFormId=uid+'-manage';
  let shareMessage=$state('');
- async function shareItem(item:Item){shareMessage='';shareMessage=await shareRecordingLink(item.recordingId,item.title)}
- type Item = {recordingId:string;title:string;language:string;status:string;progress?:number;thumbnailUrl?:string;durationMs?:number};
+ let sharing=$state<Item|null>(null);
+ let scope=$state('mine');
+ let managing=$state<Item|null>(null),manageTitle=$state(''),manageError=$state('');
+ let saving=$state(false);
+ function manage(item:Item){managing=item;manageTitle=item.title;manageError=''}
+ async function saveItem(){if(!managing||saving)return;saving=true;manageError='';try{const r=await fetch(`/api/recordings/${managing.recordingId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:manageTitle})});if(!r.ok)throw new Error(await r.text());managing.title=manageTitle.trim();managing=null}catch(e){manageError=e instanceof Error?e.message:'Không lưu được bài'}finally{saving=false}}
+ async function restoreItem(item:Item){const r=await fetch(`/api/recordings/${item.recordingId}/restore`,{method:'POST'});if(r.ok)location.reload();else shareMessage=await r.text()}
+ async function deleteItem(){if(!managing||!confirm(`Xóa bài “${managing.title}”? Audio vẫn được giữ để khôi phục.`))return;const r=await fetch(`/api/recordings/${managing.recordingId}`,{method:'DELETE'});if(!r.ok){manageError=await r.text();return}location.reload()}
+ function shareItem(item:Item){sharing=item}
+ type Item = {recordingId:string;title:string;language:string;status:string;progress?:number;thumbnailUrl?:string;durationMs?:number;owned?:boolean;visibility?:string};
  function formatDuration(ms:number){const seconds=Math.round(ms/1000);return seconds>=3600?`${Math.floor(seconds/3600)}:${String(Math.floor(seconds/60)%60).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`:`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`}
  type Filter = 'all'|'ready'|'processing'|'failed';
  const filters:{value:Filter;label:string}[]=[{value:'all',label:'Tất cả'},{value:'ready',label:'Sẵn sàng'},{value:'processing',label:'Đang xử lý'},{value:'failed',label:'Cần thử lại'}];
  const statusNames:Record<string,string>={ready:'Sẵn sàng',failed:'Cần thử lại',queued:'Chờ xử lý',transcribing:'Đang xử lý audio',aligning:'Đang căn thời gian',aligned:'Chuẩn bị tạo IPA',phonetics:'Đang tạo IPA',processing:'Đang xử lý'};
  let items=$state<Item[]>([]),loading=$state(true),query=$state(''),filter=$state<Filter>('all');
  let title=$state(''),file=$state<File|null>(null),uploading=$state(false),message=$state(''),listError=$state(''),importOpen=$state(false);
- let importDialog=$state<HTMLDialogElement>(),fileInput=$state<HTMLInputElement>(),pdfInput=$state<HTMLInputElement>();
+ let fileInput=$state<HTMLInputElement>(),pdfInput=$state<HTMLInputElement>();
  let savedCopy=$state(false);
  let source=$state<'youtube'|'mp3'|'pdf'>('youtube'),youtubeLink=$state(''),previewLoading=$state(false),previewMessage=$state('');
  type PdfTurn={speaker:'woman'|'man'|'narrator';text:string};
@@ -75,7 +89,6 @@
   const matchesStatus=filter==='all'||(filter==='processing'?!['ready','failed'].includes(item.status):item.status===filter);
   return matchesStatus&&name.includes(normalizedQuery);
  }));
- $effect(()=>{if(!importDialog)return;if(importOpen&&!importDialog.open)importDialog.showModal();else if(!importOpen&&importDialog.open)importDialog.close()});
  async function upload(event:SubmitEvent){
   event.preventDefault();if(importDisabled)return;uploading=true;message='';dragging=false;dragDepth=0;
   const body=new FormData();body.set('title',title.trim());if(file)body.set('audio',file);
@@ -85,17 +98,37 @@
   catch(e){message=e instanceof Error?e.message:'Không nhập được bài.';uploading=false}
  }
  onMount(()=>{
-  let disposed=false,fetching=false;const abort=new AbortController();
-  const refresh=async()=>{if(fetching||!navigator.onLine&&items.length>0)return;fetching=true;try{const r=await fetch('/api/sutras',{signal:abort.signal});if(!r.ok)throw new Error();const data:Item[]=await r.json();if(!disposed){items=data;listError='';savedCopy=r.headers.get('X-PQ-Dharma-Offline')==='1'}}catch{if(!disposed)listError=navigator.onLine?'Không tải được thư viện. Hãy kiểm tra kết nối và thử lại.':'Thiết bị chưa lưu thư viện. Kết nối mạng và mở thư viện một lần để sử dụng ngoại tuyến.'}finally{if(!disposed)loading=false;fetching=false}};
-  void refresh();const timer=setInterval(refresh,5000);const reconnect=()=>{void refresh()};window.addEventListener('online',reconnect);window.addEventListener('pq-dharma:offline-ready',reconnect);return()=>{window.removeEventListener('online',reconnect);window.removeEventListener('pq-dharma:offline-ready',reconnect);disposed=true;abort.abort();clearInterval(timer)};
+  const requested=new URLSearchParams(location.search).get('scope');if(requested&&['mine','shared','public','trash'].includes(requested))scope=requested;
+  let disposed=false,unsubscribe:(()=>void)|undefined,accountKey:string|undefined;
+  const loader=createLibraryLoader<{items:Item[];offline:boolean}>({
+   fetch:async(requestedScope,signal)=>{const r=await fetch(`/api/sutras?scope=${requestedScope}`,{signal,cache:'no-store'});if(!r.ok)throw new Error();return {items:await r.json(),offline:r.headers.get('X-PQ-Dharma-Offline')==='1'}},
+   data:data=>{items=data.items;listError='';savedCopy=data.offline},
+   error:()=>{listError=navigator.onLine?'Không tải được thư viện. Hãy kiểm tra kết nối và thử lại.':'Thiết bị chưa lưu thư viện. Kết nối mạng và mở thư viện một lần để sử dụng ngoại tuyến.'},
+   settled:()=>loading=false
+  });
+  // Resolve authentication once before requesting the account-specific library.
+  void refreshAuth().then(()=>{
+   if(disposed)return;
+   unsubscribe=auth.subscribe(account=>{
+    const key=account?.id??'';if(accountKey===key)return;accountKey=key;
+    items=[];loading=true;listError='';savedCopy=false;
+    void loader.reset(account?scope:'public');
+   });
+  });
+  const refresh=()=>{if(!navigator.onLine&&items.length>0)return;void loader.refresh()};
+  const timer=setInterval(refresh,5000);
+  window.addEventListener('online',refresh);window.addEventListener('pq-dharma:offline-ready',refresh);
+  return()=>{disposed=true;unsubscribe?.();loader.dispose();clearInterval(timer);window.removeEventListener('online',refresh);window.removeEventListener('pq-dharma:offline-ready',refresh)};
  });
 </script>
 <div class="eyebrow mt-6">MỘT CHÚT TĨNH LẶNG MỖI NGÀY</div>
-<div class="library-heading"><div><h1>Thư viện kinh</h1><p>Chọn một bài để nghe và luyện từng lời.</p></div><button class="primary-btn" disabled={!$online} onclick={()=>{message='';importOpen=true}}>Nhập bài</button></div>
+<div class="library-heading"><div><h1>Thư viện kinh</h1><p>Chọn một bài để nghe và luyện từng lời.</p></div><button class="primary-btn" disabled={!$online||!$auth} onclick={()=>{message='';importOpen=true}}>Nhập bài</button></div>
 {#if savedCopy&&$online}<p class="saved-copy-note" role="status">Đang xem thư viện đã lưu. Trạng thái bài sẽ cập nhật khi kết nối lại.</p>{/if}
 <section aria-label="Tìm và lọc bài kinh" class="library-tools">
- <label for="library-search">Tìm bài kinh</label>
- <input id="library-search" type="search" bind:value={query} placeholder="Tìm theo tên bài…"/>
+ <div class="library-search-row">
+  <label class="library-search-field" for="library-search"><span>Tìm bài kinh</span><input id="library-search" type="search" bind:value={query} placeholder="Tìm theo tên bài…"/></label>
+  <label class="scope-filter" for="library-scope"><span>Phạm vi</span><Combobox id="library-scope" label="Phạm vi thư viện" value={$auth?scope:'public'} options={($auth?[{value:'mine',label:'Của tôi'},{value:'shared',label:'Được chia sẻ'},{value:'public',label:'Khám phá'},{value:'trash',label:'Đã xóa'}]:[{value:'public',label:'Khám phá'}])} onchange={value=>location.assign(`/library?scope=${value}`)}/></label>
+ </div>
  <div class="library-filters" aria-label="Trạng thái bài">{#each filters as option}<button class="chip" class:chip-active={filter===option.value} aria-pressed={filter===option.value} onclick={()=>filter=option.value}>{option.label}</button>{/each}</div>
 </section>
 {#if listError}<p role="alert" class="panel text-red-800 mt-4">{listError}<button class="outline-btn mt-3" onclick={()=>location.reload()}>Thử lại</button></p>{/if}
@@ -110,15 +143,14 @@
    <div class="recording-thumbnail">{#if item.thumbnailUrl}<img src={item.thumbnailUrl} alt="" width="480" height="270" loading="lazy" decoding="async" onerror={event=>{item.thumbnailUrl=undefined}}/>{:else}<Icon name="leaf" size={40}/>{/if}</div>
    <div class="recording-info"><h2>{item.title}</h2><p>{item.language==='en'?'Tiếng Anh':item.language}{#if item.durationMs&&item.durationMs>0} · <span aria-label={`Thời lượng ${formatDuration(item.durationMs)}`}>{formatDuration(item.durationMs)}</span>{/if} · {item.status==='ready'?'Nghe & luyện tụng':'Mở bài để xem tiến trình'}</p></div>
   </a>
-  <div class="recording-card-actions"><span class="recording-status" class:status-ready={item.status==='ready'} class:status-failed={item.status==='failed'}>{statusNames[item.status]||'Đang xử lý'}{#if !['ready','failed'].includes(item.status)} · {item.progress??0}%{/if}</span><button type="button" class="card-share-btn" onclick={()=>void shareItem(item)} aria-label={`Chia sẻ ${item.title}`}>Chia sẻ</button></div>
+  <div class="recording-card-actions"><span class="recording-status" class:status-ready={item.status==='ready'} class:status-failed={item.status==='failed'}>{statusNames[item.status]||'Đang xử lý'}{#if !['ready','failed'].includes(item.status)} · {item.progress??0}%{/if}</span>{#if scope!=='trash'}<button type="button" class="card-share-btn" onclick={()=>shareItem(item)} aria-label={`Chia sẻ ${item.title}`}>Chia sẻ</button>{/if}</div>
+  {#if item.owned&&scope==='trash'}<button class="card-share-btn" onclick={()=>void restoreItem(item)}>Khôi phục</button>{:else if item.owned}<button class="card-share-btn" onclick={()=>void manage(item)} aria-label={`Quản lý ${item.title}`}>⋯ Quản lý</button>{/if}
   </article>
  {/each}</div>
  {#if visible.length===0&&items.length>0}<div class="library-empty"><h2>Không tìm thấy bài phù hợp</h2><p>Thử tên khác hoặc đổi bộ lọc.</p><button class="outline-btn" onclick={()=>{query='';filter='all'}}>Xem tất cả</button></div>{/if}
 {/if}
-<dialog bind:this={importDialog} class="settings-dialog" ondragover={dragOver} ondrop={dropFile} onclose={()=>{importOpen=false;dragging=false;dragDepth=0}} oncancel={e=>{if(uploading)e.preventDefault();else importOpen=false}} aria-labelledby="import-title">
- <div class="settings-header"><h2 id="import-title" class="text-lg font-semibold">Nhập bài mới</h2><button class="icon-btn" disabled={uploading} onclick={()=>importOpen=false} aria-label="Đóng nhập bài"><Icon name="x"/></button></div>
- <div class="settings-content">
-  <form onsubmit={upload} class="upload-form">
+<Popup open={importOpen} title="Nhập bài mới" busy={uploading} onrequestclose={()=>importOpen=false} ondragover={dragOver} ondrop={dropFile} onclose={()=>{importOpen=false;dragging=false;dragDepth=0}}>
+  <form id={importFormId} onsubmit={upload} class="upload-form">
    <div class="library-filters" aria-label="Nguồn bài">{#each [{value:'youtube',label:'Link YouTube'},{value:'mp3',label:'File MP3'},{value:'pdf',label:'PDF → Audio'}] as option}<button type="button" class="chip" class:chip-active={source===option.value} aria-pressed={source===option.value} disabled={uploading||pdfLoading} onclick={()=>{source=option.value as 'youtube'|'mp3'|'pdf';message='';dragging=false;dragDepth=0;if(title===autoTitle){title='';autoTitle=''}if(source==='mp3'&&file)selectFiles([file])}}>{option.label}</button>{/each}</div>
    {#if source==='youtube'}
     <label>Link YouTube<input type="url" bind:value={youtubeLink} required placeholder="https://www.youtube.com/watch?v=…" disabled={uploading}/></label>
@@ -147,14 +179,14 @@
     {#if pdfLoading}<p role="status">Đang đọc nội dung PDF…</p>{/if}
     {#if pdfTurns.length}
      <div class="pdf-voice-settings">
-      {#each pdfSpeakers as speaker}<label>Giọng {speaker==='woman'?'Woman':speaker==='man'?'Man':'người dẫn chuyện'}<select bind:value={pdfVoices[speaker]} disabled={uploading}>{#each voiceOptions as voice}<option value={voice.value}>{voice.label}</option>{/each}</select></label>{/each}
-      <label>Tốc độ đọc<select bind:value={pdfSpeed} disabled={uploading}><option value={.85}>Chậm · 0.85×</option><option value={1}>Bình thường · 1×</option><option value={1.15}>Nhanh · 1.15×</option></select></label>
-      <label>Nghỉ giữa lượt<select bind:value={pdfGap} disabled={uploading}><option value={0}>Không nghỉ thêm</option><option value={.5}>0.5 giây</option><option value={1}>1 giây</option><option value={2}>2 giây</option></select></label>
+      {#each pdfSpeakers as speaker}<label>Giọng {speaker==='woman'?'Woman':speaker==='man'?'Man':'người dẫn chuyện'}<Combobox label={`Giọng ${speaker==='woman'?'Woman':speaker==='man'?'Man':'người dẫn chuyện'}`} bind:value={pdfVoices[speaker]} disabled={uploading} options={voiceOptions}/></label>{/each}
+      <label>Tốc độ đọc<Combobox label="Tốc độ đọc" bind:value={pdfSpeed} disabled={uploading} options={[{value:.85,label:"Chậm · 0.85×"},{value:1,label:"Bình thường · 1×"},{value:1.15,label:"Nhanh · 1.15×"}]}/></label>
+      <label>Nghỉ giữa lượt<Combobox label="Nghỉ giữa lượt" bind:value={pdfGap} disabled={uploading} options={[{value:0,label:"Không nghỉ thêm"},{value:.5,label:"0.5 giây"},{value:1,label:"1 giây"},{value:2,label:"2 giây"}]}/></label>
      </div>
      <div class="pdf-review-heading"><h3>Xem và sửa lời · {pdfTurns.length} lượt</h3><p>Nhãn người nói chỉ dùng để chọn giọng, không được đọc thành tiếng. Kiểm tra tiêu đề, số trang và nội dung trước khi tạo audio.</p></div>
      <div class="pdf-turns">{#each pdfTurns as turn,index}
       <fieldset class="pdf-turn" disabled={uploading}><legend>Lượt {index+1}</legend>
-       <div class="pdf-turn-actions"><label>Người nói<select bind:value={turn.speaker}><option value="woman">Woman</option><option value="man">Man</option><option value="narrator">Người dẫn chuyện</option></select></label><button type="button" class="outline-btn" onclick={()=>{pdfTurns=pdfTurns.filter((_,i)=>i!==index)}} aria-label={`Xóa lượt ${index+1}`}>Xóa</button></div>
+       <div class="pdf-turn-actions"><label>Người nói<Combobox label="Người nói" bind:value={turn.speaker} options={[{value:"woman",label:"Woman"},{value:"man",label:"Man"},{value:"narrator",label:"Người dẫn chuyện"}]}/></label><button type="button" class="outline-btn" onclick={()=>{pdfTurns=pdfTurns.filter((_,i)=>i!==index)}} aria-label={`Xóa lượt ${index+1}`}>Xóa</button></div>
        <label>Lời đọc<textarea bind:value={turn.text} rows={3} maxlength={4000} required></textarea></label>
       </fieldset>
      {/each}</div>
@@ -165,7 +197,13 @@
    <p class="text-xs text-stone-500">Tiếng Anh · Tối đa 200 MB, 4 giờ. Lời và IPA được tạo tự động; bạn có thể nghe và sửa sau khi xử lý.</p>
    {/if}
    {#if message}<p role="alert" class="text-sm text-red-800">{message}</p>{/if}
-   <button class="primary-btn" type="submit" disabled={importDisabled}>{uploading?'Đang nhập bài…':source==='pdf'?'Tạo audio từ PDF':'Import & tạo lời'}</button>
   </form>
- </div>
-</dialog>
+ {#snippet footer()}<div class="user-dialog-actions"><button type="button" class="outline-btn" disabled={uploading} onclick={()=>importOpen=false}>Đóng</button>   <button class="primary-btn" type="submit" form={importFormId} disabled={importDisabled}>{uploading?'Đang nhập bài…':source==='pdf'?'Tạo audio từ PDF':'Import & tạo lời'}</button></div>{/snippet}
+</Popup>
+
+{#if managing}<Popup open title="Quản lý bài nghe" busy={saving} class="user-dialog" onrequestclose={()=>managing=null} onclose={()=>managing=null}>
+ <form id={manageFormId} class="upload-form" onsubmit={e=>{e.preventDefault();void saveItem()}}><label>Tên bài<input bind:value={manageTitle} maxlength={200} required disabled={saving}/></label>{#if manageError}<p role="alert">{manageError}</p>{/if}</form>
+ {#snippet footer()}<div class="popup-manage-actions"><button type="button" class="outline-btn danger-text" disabled={saving} onclick={()=>void deleteItem()}>Xóa bài</button><div class="user-dialog-actions"><button type="button" class="outline-btn" disabled={saving} onclick={()=>managing=null}>Đóng</button><button type="submit" form={manageFormId} class="primary-btn" disabled={saving}>{saving?'Đang lưu…':'Lưu'}</button></div></div>{/snippet}
+</Popup>{/if}
+
+{#if sharing}{#key sharing.recordingId}<ShareDialog recordingId={sharing.recordingId} title={sharing.title} onclose={()=>sharing=null} onsaved={visibility=>{if(sharing)sharing.visibility=visibility}}/>{/key}{/if}

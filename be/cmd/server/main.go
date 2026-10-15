@@ -67,7 +67,7 @@ func main() {
 		if _, e = db.Exec(ctx, string(sql)); e != nil {
 			log.Fatal(e)
 		}
-		for _, path := range []string{"migrations/002_jobs.sql", "migrations/003_job_progress.sql", "migrations/004_ipa_voices.sql", "migrations/005_media.sql", "migrations/006_duration.sql"} {
+		for _, path := range []string{"migrations/002_jobs.sql", "migrations/003_job_progress.sql", "migrations/004_ipa_voices.sql", "migrations/005_media.sql", "migrations/006_duration.sql", "migrations/007_users.sql", "migrations/008_user_status.sql", "migrations/009_user_name.sql"} {
 			migration, err := os.ReadFile(path)
 			if err != nil {
 				log.Fatal(err)
@@ -119,6 +119,12 @@ func main() {
 			sampleExists = true
 		}
 	}
+	if db != nil {
+		if err := seedAdmin(ctx, db); err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	if *autoIPA && (*fileMode || sampleExists) {
 		overrides, err := phonetics.LoadOverrides(*ipaOverrides)
 		if err != nil {
@@ -202,13 +208,15 @@ func main() {
 		registerImportRoutes(mux, db, uploadDir, store)
 		registerIPARoutes(mux, db)
 		registerShareRoutes(mux, db)
+		registerAuth(mux, db)
+		registerManagement(mux, db)
 	}
 	mux.HandleFunc("GET /api/sutras", func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
 			send(w, []map[string]any{{"id": "sample", "title": t.Title, "language": t.Language, "recordingId": "sample", "status": "ready"}})
 			return
 		}
-		rows, err := db.Query(r.Context(), `SELECT r.id,s.title,s.language,COALESCE(j.status,r.status),COALESCE(j.progress,100),COALESCE(a.sha256,''),COALESCE(r.duration_ms,0) FROM recordings r JOIN sutras s ON s.id=r.sutra_id LEFT JOIN recording_assets a ON a.recording_id=r.id AND a.kind='thumbnails' LEFT JOIN LATERAL (SELECT status,progress FROM processing_jobs WHERE recording_id=r.id ORDER BY created_at DESC LIMIT 1) j ON true ORDER BY r.id='sample' DESC,r.id`)
+		rows, err := db.Query(r.Context(), `SELECT r.id,s.title,s.language,COALESCE(j.status,r.status),COALESCE(j.progress,100),COALESCE(a.sha256,''),COALESCE(r.duration_ms,0),COALESCE(r.owner_id,''),r.visibility FROM recordings r JOIN sutras s ON s.id=r.sutra_id LEFT JOIN recording_assets a ON a.recording_id=r.id AND a.kind='thumbnails' LEFT JOIN LATERAL (SELECT status,progress FROM processing_jobs WHERE recording_id=r.id ORDER BY created_at DESC LIMIT 1) j ON true WHERE ((r.deleted_at IS NULL AND $2<>'trash') OR (r.deleted_at IS NOT NULL AND $2='trash')) AND (($2='mine' AND r.owner_id=$1) OR ($2='shared' AND r.visibility='shared' AND EXISTS(SELECT 1 FROM recording_shares WHERE recording_id=r.id AND user_id=$1)) OR ($2='public' AND r.visibility='public') OR ($2='trash' AND r.owner_id=$1)) ORDER BY r.id='sample' DESC,r.id`, currentUser(r).ID, libraryScope(r))
 		if err != nil {
 			http.Error(w, "Không tải được thư viện", 500)
 			return
@@ -216,10 +224,10 @@ func main() {
 		defer rows.Close()
 		out := []map[string]any{}
 		for rows.Next() {
-			var id, title, language, status, thumbnailHash string
+			var id, title, language, status, thumbnailHash, ownerID, visibility string
 			var progress int
 			var durationMs int64
-			if err := rows.Scan(&id, &title, &language, &status, &progress, &thumbnailHash, &durationMs); err != nil {
+			if err := rows.Scan(&id, &title, &language, &status, &progress, &thumbnailHash, &durationMs, &ownerID, &visibility); err != nil {
 				http.Error(w, "Không tải được thư viện", 500)
 				return
 			}
@@ -234,7 +242,7 @@ func main() {
 					thumbnailURL = fmt.Sprintf("/api/recordings/%s/thumbnail?v=%d", id, file.ModTime().UnixNano())
 				}
 			}
-			out = append(out, map[string]any{"durationMs": durationMs, "thumbnailUrl": thumbnailURL, "id": id, "title": title, "language": language, "recordingId": id, "status": status, "progress": progress})
+			out = append(out, map[string]any{"owned": ownerID == currentUser(r).ID && ownerID != "", "visibility": visibility, "durationMs": durationMs, "thumbnailUrl": thumbnailURL, "id": id, "title": title, "language": language, "recordingId": id, "status": status, "progress": progress})
 		}
 		if rows.Err() != nil {
 			http.Error(w, "Không tải được thư viện", 500)
@@ -302,7 +310,11 @@ func main() {
 		w.Header().Set("Content-Type", "audio/mpeg")
 		http.ServeFile(w, r, audioPath)
 	})
-	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	var handler http.Handler = mux
+	if db != nil {
+		handler = authMiddleware(db, mux)
+	}
+	srv := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		<-ctx.Done()
 		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)

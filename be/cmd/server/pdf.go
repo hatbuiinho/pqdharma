@@ -222,6 +222,10 @@ func registerPDFRoutes(mux *http.ServeMux, db *pgxpool.Pool, dir string, store *
 		if _, err = tx.Exec(r.Context(), "INSERT INTO sutras VALUES($1,$2,'en')", id, input.Title); err == nil {
 			_, err = tx.Exec(r.Context(), "INSERT INTO recordings(id,sutra_id,title,audio_file,source_url,status) VALUES($1,$1,$2,$3,'','processing')", id, input.Title, id+".mp3")
 		}
+		if err == nil && currentUser(r).ID != "" {
+			_, err = tx.Exec(r.Context(), "UPDATE recordings SET owner_id=$2 WHERE id=$1", id, currentUser(r).ID)
+		}
+
 		if err == nil {
 			_, err = tx.Exec(r.Context(), "INSERT INTO processing_jobs(id,recording_id,kind,status,payload) VALUES($1,$2,'transcribe','queued',$3)", jobID, id, payload)
 		}

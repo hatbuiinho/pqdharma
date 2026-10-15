@@ -5,6 +5,7 @@
 
 # Frontend dependencies and generated builds
 node_modules/
+.pnpm-store/
 .svelte-kit/
 /fe/build/
 
@@ -19,6 +20,7 @@ venv/
 
 # Local backend binary and test output
 /be/server
+/be/tmp/
 coverage/
 .coverage
 htmlcov/

@@ -56,7 +56,7 @@ test('installs a complete shell, opens offline deep links, and waits for explici
  const h=harness();await h.event('install');assert.deepEqual(h.counts(),{claims:0,skips:0});
  await h.caches.open('another-app-cache');await h.caches.open('pq-dharma-shell-oldest');await h.caches.open('pq-dharma-shell-previous');await h.caches.open('pq-dharma-data-v1');
  await h.event('activate');assert.deepEqual(h.counts(),{claims:1,skips:0});
- assert.ok(h.storage.has('another-app-cache'));assert.ok(h.storage.has('pq-dharma-data-v1'));assert.ok(h.storage.has('pq-dharma-shell-previous'));assert.ok(!h.storage.has('pq-dharma-shell-oldest'));
+ assert.ok(h.storage.has('another-app-cache'));assert.ok(!h.storage.has('pq-dharma-data-v1'));assert.ok(h.storage.has('pq-dharma-shell-previous'));assert.ok(!h.storage.has('pq-dharma-shell-oldest'));
  h.setOffline(true);
  const response=await h.request('/recordings/never-navigated-id?test=1',{mode:'navigate'})!;
  assert.equal(response.status,200);assert.match(await response.text(),/\/_app\/immutable\/start\.js/);
@@ -64,25 +64,11 @@ test('installs a complete shell, opens offline deep links, and waits for explici
  await h.event('message',{data:{type:'unrelated'}});assert.equal(h.counts().skips,0);
  await h.event('message',{data:{type:'PQ_DHARMA_APPLY_UPDATE'}});assert.equal(h.counts().skips,1);
 });
-test('refreshes transcript snapshots online and returns labelled saved data offline without faking job status',async()=>{
- const h=harness();let revision=1;
- h.network.set('/api/recordings/sample/transcript',()=>Response.json({revision}));
- assert.equal((await(await h.request('/api/recordings/sample/transcript')!).json()).revision,1);
- revision=2;assert.equal((await(await h.request('/api/recordings/sample/transcript')!).json()).revision,2);
- h.setOffline(true);const saved=await h.request('/api/recordings/sample/transcript')!;
- assert.equal(saved.headers.get('X-PQ-Dharma-Offline'),'1');assert.equal((await saved.json()).revision,2);
- assert.equal(h.request('/api/recordings/sample/job'),undefined);
- assert.equal(h.request('/api/recordings/sample/audio',{range:true}),undefined);
- assert.equal(h.request('/api/recordings/sample/transcript',{method:'PATCH'}),undefined);
- assert.equal(h.request('/api/recordings',{method:'POST'}),undefined);
+test('private data bypasses service worker storage and activation removes legacy account snapshots',async()=>{
+ const h=harness();await h.caches.open('pq-dharma-data-v1');await h.event('install');await h.event('activate');
+ assert.ok(!h.storage.has('pq-dharma-data-v1'));
+ for(const path of ['/api/sutras','/api/recordings/sample/transcript','/api/recordings/sample/audio','/api/auth/me'])assert.equal(h.request(path),undefined);
 });
-test('does not resurrect a deleted recording or substitute HTML for a missing offline transcript',async()=>{
- const h=harness();h.network.set('/api/recordings/sample/transcript',()=>Response.json({revision:1}));
- await h.request('/api/recordings/sample/transcript');h.network.delete('/api/recordings/sample/transcript');
- assert.equal((await h.request('/api/recordings/sample/transcript')!).status,404);
- h.setOffline(true);await assert.rejects(h.request('/api/recordings/sample/transcript')!,/offline/);
-});
-
 test('worker reports its actual cached build through the requesting page reply port',async()=>{
  const h=harness();let reply:unknown;
  await h.event('message',{data:{type:'PQ_DHARMA_GET_VERSION'},ports:[{postMessage:(message:unknown)=>{reply=message}}]});
